@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package order;
+
+option go_package = "MarketShop/cmd/order;order";
+
+service OrderService {
+  rpc CreateOrder (CreateOrderRequest) returns (OrderResponse);
+  rpc GetOrder (GetOrderRequest) returns (OrderResponse);
+  rpc UpdateOrder (UpdateOrderRequest) returns (OrderResponse);
+  rpc CancelOrder (CancelOrderRequest) returns (EmptyResponse);
+  rpc ListOrders (EmptyRequest) returns (ListOrdersResponse);
+}
+
+message Order {
+  int64 id = 1;
+  int64 userId = 2;
+  int64 productId = 3;
+  int32 quantity = 4;
+  double totalPrice = 5;
+}
+
+message CreateOrderRequest {
+  Order order = 1;
+}
+
+message GetOrderRequest {
+  int64 id = 1;
+}
+
+message UpdateOrderRequest {
+  Order order = 1;
+}
+
+message CancelOrderRequest {
+  int64 id = 1;
+}
+
+message OrderResponse {
+  Order order = 1;
+}
+
+message EmptyResponse {}
+
+message EmptyRequest {}  // Added
+
+message ListOrdersResponse {  // Added
+  repeated Order orders = 1;
+}
