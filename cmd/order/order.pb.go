@@ -20,6 +20,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// The request message containing the user's order.
 type Order struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

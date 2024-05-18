@@ -14,13 +14,6 @@ import (
 	"net"
 )
 
-var jwtKey = []byte("your_secret_key")
-
-type Claims struct {
-	Username string `json:"username"`
-	jwt.StandardClaims
-}
-
 type server struct {
 	pb.UnimplementedProductServiceServer
 }

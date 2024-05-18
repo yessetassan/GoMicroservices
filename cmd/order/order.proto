@@ -4,6 +4,7 @@ package order;
 
 option go_package = "MarketShop/cmd/order;order";
 
+// The Order service definition.
 service OrderService {
   rpc CreateOrder (CreateOrderRequest) returns (OrderResponse);
   rpc GetOrder (GetOrderRequest) returns (OrderResponse);
@@ -12,6 +13,7 @@ service OrderService {
   rpc ListOrders (EmptyRequest) returns (ListOrdersResponse);
 }
 
+// The request message containing the user's order.
 message Order {
   int64 id = 1;
   int64 userId = 2;
@@ -42,8 +44,8 @@ message OrderResponse {
 
 message EmptyResponse {}
 
-message EmptyRequest {}  // Added
+message EmptyRequest {}
 
-message ListOrdersResponse {  // Added
+message ListOrdersResponse {
   repeated Order orders = 1;
 }
