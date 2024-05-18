@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const productGrpcAddress = "localhost:50051"
@@ -39,11 +41,11 @@ func main() {
 	// Set up the HTTP server
 	router := mux.NewRouter()
 
-	router.HandleFunc("/products", withAuthProduct(createProductHandler)).Methods("POST")
-	router.HandleFunc("/products/{id}", withAuthProduct(getProductHandler)).Methods("GET")
-	router.HandleFunc("/products/{id}", withAuthProduct(updateProductHandler)).Methods("PUT")
-	router.HandleFunc("/products/{id}", withAuthProduct(deleteProductHandler)).Methods("DELETE")
-	router.HandleFunc("/products", withAuthProduct(listProductsHandler)).Methods("GET")
+	router.HandleFunc("/products", withAuth(createProductHandler)).Methods("POST")
+	router.HandleFunc("/products/{id}", withAuth(getProductHandler)).Methods("GET")
+	router.HandleFunc("/products/{id}", withAuth(updateProductHandler)).Methods("PUT")
+	router.HandleFunc("/products/{id}", withAuth(deleteProductHandler)).Methods("DELETE")
+	router.HandleFunc("/products", withAuth(listProductsHandler)).Methods("GET")
 
 	log.Println("Product REST server listening on port 8080...")
 	log.Fatal(http.ListenAndServe(":8080", router))
@@ -57,7 +59,18 @@ func createProductHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := productGrpcClient.CreateProduct(context.Background(), &pb.CreateProductRequest{Product: &product})
+	// Extract token from context
+	tokenString, err := extractTokenFromContext(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Add token to gRPC context metadata
+	md := metadata.New(map[string]string{"authorization": tokenString})
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	resp, err := productGrpcClient.CreateProduct(ctx, &pb.CreateProductRequest{Product: &product})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -74,7 +87,18 @@ func getProductHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := productGrpcClient.GetProduct(context.Background(), &pb.GetProductRequest{Id: productID})
+	// Extract token from context
+	tokenString, err := extractTokenFromContext(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Add token to gRPC context metadata
+	md := metadata.New(map[string]string{"authorization": tokenString})
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	resp, err := productGrpcClient.GetProduct(ctx, &pb.GetProductRequest{Id: productID})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -100,7 +124,18 @@ func updateProductHandler(w http.ResponseWriter, r *http.Request) {
 
 	product.Id = productID
 
-	resp, err := productGrpcClient.UpdateProduct(context.Background(), &pb.UpdateProductRequest{Product: &product})
+	// Extract token from context
+	tokenString, err := extractTokenFromContext(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Add token to gRPC context metadata
+	md := metadata.New(map[string]string{"authorization": tokenString})
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	resp, err := productGrpcClient.UpdateProduct(ctx, &pb.UpdateProductRequest{Product: &product})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -117,7 +152,18 @@ func deleteProductHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = productGrpcClient.DeleteProduct(context.Background(), &pb.DeleteProductRequest{Id: productID})
+	// Extract token from context
+	tokenString, err := extractTokenFromContext(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Add token to gRPC context metadata
+	md := metadata.New(map[string]string{"authorization": tokenString})
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	_, err = productGrpcClient.DeleteProduct(ctx, &pb.DeleteProductRequest{Id: productID})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -127,7 +173,18 @@ func deleteProductHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func listProductsHandler(w http.ResponseWriter, r *http.Request) {
-	resp, err := productGrpcClient.ListProducts(context.Background(), &pb.ListProductsRequest{})
+	// Extract token from context
+	tokenString, err := extractTokenFromContext(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Add token to gRPC context metadata
+	md := metadata.New(map[string]string{"authorization": tokenString})
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	resp, err := productGrpcClient.ListProducts(ctx, &pb.ListProductsRequest{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -137,7 +194,7 @@ func listProductsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Middleware for authentication
-func withAuthProduct(handler http.HandlerFunc) http.HandlerFunc {
+func withAuth(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -162,4 +219,14 @@ func withAuthProduct(handler http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), "username", claims.Username)
 		handler(w, r.WithContext(ctx))
 	}
+}
+
+func extractTokenFromContext(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("missing authorization header")
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	return tokenString, nil
 }

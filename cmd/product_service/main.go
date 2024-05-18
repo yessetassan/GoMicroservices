@@ -20,6 +20,7 @@ type Claims struct {
 	Username string `json:"username"`
 	jwt.StandardClaims
 }
+
 type server struct {
 	pb.UnimplementedProductServiceServer
 }

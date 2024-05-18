@@ -79,3 +79,5 @@ CREATE TABLE IF NOT EXISTS payment_details (
                                                status_id BIGINT REFERENCES payment_status(id),
                                                deleted BOOLEAN DEFAULT FALSE
 );
+
+
