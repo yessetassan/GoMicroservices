@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	pb "MarketShop/cmd/user"
@@ -15,6 +16,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+)
+
+type contextKey int
+
+const (
+	userContextKey contextKey = iota
 )
 
 var jwtKey = []byte("your_secret_key")
@@ -112,22 +119,21 @@ func (s *server) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb
 		return nil, status.Errorf(codes.InvalidArgument, "email is required")
 	}
 
-	// Get login from JWT token
-	login := ctx.Value("username").(string)
-	if login == "" {
-		return nil, status.Errorf(codes.Unauthenticated, "invalid token: login not found")
+	// Safely get login from JWT token stored in context
+	rawUsername := ctx.Value(userContextKey)
+	username, ok := rawUsername.(string)
+	if !ok || username == "" {
+		return nil, status.Errorf(codes.Unauthenticated, "invalid session or user not authenticated")
 	}
 
-	// Update user details
+	// Update user details using the username from the token
 	query := `UPDATE _user SET first_name=$1, last_name=$2, middle_name=$3, email=$4 WHERE login=$5`
-	_, err := dbPool.Exec(context.Background(), query, user.FirstName, user.LastName, user.MiddleName, user.Email, login)
-	if err != nil {
+	if _, err := dbPool.Exec(context.Background(), query, user.FirstName, user.LastName, user.MiddleName, user.Email, username); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update user: %v", err)
 	}
 
 	// Fetch updated user details to return
-	err = dbPool.QueryRow(context.Background(), `SELECT id, first_name, last_name, middle_name, login, email, role_id FROM _user WHERE login=$1`, login).Scan(&user.Id, &user.FirstName, &user.LastName, &user.MiddleName, &user.Login, &user.Email, &user.RoleId)
-	if err != nil {
+	if err := dbPool.QueryRow(context.Background(), `SELECT id, first_name, last_name, middle_name, login, email, role_id FROM _user WHERE login=$1`, username).Scan(&user.Id, &user.FirstName, &user.LastName, &user.MiddleName, &user.Login, &user.Email, &user.RoleId); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to retrieve updated user: %v", err)
 	}
 
@@ -137,8 +143,14 @@ func (s *server) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb
 func (s *server) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.EmptyResponse, error) {
 	dbPool := db.GetDB()
 
-	query := `DELETE FROM _user WHERE id=$1`
-	_, err := dbPool.Exec(context.Background(), query, req.GetId())
+	// First, delete dependent records
+	_, err := dbPool.Exec(context.Background(), "DELETE FROM user_payment WHERE user_id=$1", req.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to delete user payments: %v", err)
+	}
+
+	// Now, delete the user
+	_, err = dbPool.Exec(context.Background(), "DELETE FROM _user WHERE id=$1", req.Id)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete user: %v", err)
 	}
@@ -199,8 +211,8 @@ func (s *server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 }
 
 func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	// Skip authentication for certain methods
 	if info.FullMethod == "/user.UserService/CreateUser" || info.FullMethod == "/user.UserService/Login" {
-		// Skip authentication for CreateUser and Login methods
 		return handler(ctx, req)
 	}
 
@@ -213,7 +225,7 @@ func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerIn
 	if !ok || len(tokens) < 1 {
 		return nil, status.Errorf(codes.Unauthenticated, "authorization token is not provided")
 	}
-	tokenString := tokens[0]
+	tokenString := strings.TrimPrefix(tokens[0], "Bearer ")
 
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -224,7 +236,13 @@ func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerIn
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
-	ctx = context.WithValue(ctx, "username", claims.Username)
+	// Check if username is present and set it in the context
+	if claims.Username != "" {
+		ctx = context.WithValue(ctx, userContextKey, claims.Username)
+	} else {
+		return nil, status.Errorf(codes.Unauthenticated, "username not present in token")
+	}
+
 	return handler(ctx, req)
 }
 
