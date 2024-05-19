@@ -41,6 +41,7 @@ func main() {
 	// Set up the HTTP server
 	router := mux.NewRouter()
 
+	//
 	router.HandleFunc("/products", withAuth(createProductHandler)).Methods("POST")
 	router.HandleFunc("/products/{id}", withAuth(getProductHandler)).Methods("GET")
 	router.HandleFunc("/products/{id}", withAuth(updateProductHandler)).Methods("PUT")
