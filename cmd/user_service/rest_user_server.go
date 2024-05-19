@@ -64,7 +64,6 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// clean that
 
 	json.NewEncoder(w).Encode(resp.User)
 }

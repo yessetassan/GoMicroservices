@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/status"
 	"log"
 	"net"
+	"strings"
 )
 
 var jwtKey = []byte("your_secret_key")
 
 type Claims struct {
 	Username string `json:"username"`
-	UserID   int64  `json:"user_id"`
 	jwt.StandardClaims
 }
 
@@ -26,7 +26,6 @@ type server struct {
 	pb.UnimplementedPaymentServiceServer
 }
 
-// Authenticate is a middleware for JWT authentication.
 func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -37,7 +36,7 @@ func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerIn
 	if !ok || len(tokens) < 1 {
 		return nil, status.Errorf(codes.Unauthenticated, "authorization token is not provided")
 	}
-	tokenString := tokens[0]
+	tokenString := strings.TrimPrefix(tokens[0], "Bearer ")
 
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -45,39 +44,40 @@ func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerIn
 	})
 
 	if err != nil || !token.Valid {
-		return nil, status.Errorf(codes.Unauthenticated, "invalid token")
+		return nil, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
-	ctx = context.WithValue(ctx, "userID", claims.UserID)
+	ctx = context.WithValue(ctx, "username", claims.Username)
 	return handler(ctx, req)
 }
 
 func (s *server) ListPaymentDetails(ctx context.Context, req *pb.EmptyRequest) (*pb.ListPaymentDetailsResponse, error) {
-	userID, ok := ctx.Value("userID").(int64)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "userID not found in context")
-	}
-
+	username := ctx.Value("username").(string)
 	dbPool := db.GetDB()
-	rows, err := dbPool.Query(context.Background(), "SELECT id, order_id, payment_id, status_id FROM payment_details WHERE payment_id IN (SELECT id FROM user_payment WHERE user_id = $1)", userID)
+	var details []*pb.PaymentDetail
+
+	query := `SELECT pd.id, pd.order_id, pd.payment_id, pd.status_id, ps.name AS status_name
+              FROM payment_details pd
+              JOIN user_payment up ON pd.payment_id = up.id
+              JOIN _user u ON up.user_id = u.id
+              JOIN payment_status ps ON pd.status_id = ps.id
+              WHERE u.login = $1`
+	rows, err := dbPool.Query(ctx, query, username)
 	if err != nil {
-		log.Printf("ListPaymentDetails failed: %v", err)
-		return nil, err
+		log.Printf("Failed to retrieve payment details: %v", err)
+		return nil, status.Errorf(codes.Internal, "database error: %v", err)
 	}
 	defer rows.Close()
 
-	var paymentDetails []*pb.PaymentDetail
 	for rows.Next() {
-		var paymentDetail pb.PaymentDetail
-		err := rows.Scan(&paymentDetail.Id, &paymentDetail.OrderId, &paymentDetail.PaymentId, &paymentDetail.StatusId)
-		if err != nil {
-			log.Printf("ListPaymentDetails row scan failed: %v", err)
-			return nil, err
+		var detail pb.PaymentDetail
+		if err := rows.Scan(&detail.Id, &detail.OrderId, &detail.PaymentId, &detail.StatusId, &detail.StatusName); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to read payment details: %v", err)
 		}
-		paymentDetails = append(paymentDetails, &paymentDetail)
+		details = append(details, &detail)
 	}
 
-	return &pb.ListPaymentDetailsResponse{PaymentDetails: paymentDetails}, nil
+	return &pb.ListPaymentDetailsResponse{PaymentDetails: details}, nil
 }
 
 func main() {

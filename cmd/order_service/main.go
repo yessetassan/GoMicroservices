@@ -63,6 +63,11 @@ func (s *server) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*
 	order := req.GetOrder()
 	order.UserId = userId // Set user ID from the JWT token
 
+	// Validate quantity
+	if order.Quantity <= 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "quantity must be greater than zero")
+	}
+
 	// Calculate totalPrice by multiplying quantity with product's price
 	productPrice, err := fetchProductPriceById(order.ProductId)
 	if err != nil {
