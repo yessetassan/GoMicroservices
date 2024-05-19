@@ -66,6 +66,18 @@ func (s *server) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb
 		return nil, status.Errorf(codes.Internal, "failed to create user: %v", err)
 	}
 
+	// Generate a fake user_payment entry for the new user
+	fakePaymentType := "Credit Card"
+	fakeProvider := "Visa"
+	fakeAccountNo := "1234567890123456"
+	fakeExpiry := time.Now().AddDate(2, 0, 0).Format("2006-01-02") // 2 years from now
+
+	paymentQuery := `INSERT INTO user_payment (user_id, payment_type, provider, account_no, expiry, deleted) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err = dbPool.Exec(context.Background(), paymentQuery, user.Id, fakePaymentType, fakeProvider, fakeAccountNo, fakeExpiry, false)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create user payment: %v", err)
+	}
+
 	return &pb.UserResponse{User: user}, nil
 }
 

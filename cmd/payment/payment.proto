@@ -13,6 +13,7 @@ message PaymentDetail {
   int64 order_id = 2;
   int64 payment_id = 3;
   int64 status_id = 4;
+  string status_name = 5; // Add status name field
 }
 
 message EmptyRequest {}
