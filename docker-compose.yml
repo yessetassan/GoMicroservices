@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  rest_product_server:
+    image: rest_product_server
+    build:
+      context: .
+      dockerfile: cmd/product_service/Dockerfile
+    ports:
+      - "8080:8080"
+
+  rest_user_server:
+    image: rest_user_server
+    build:
+      context: .
+      dockerfile: cmd/user_service/Dockerfile
+    ports:
+      - "8081:8081"
+
+  rest_payment_server:
+    image: rest_payment_server
+    build:
+      context: .
+      dockerfile: cmd/payment_service/Dockerfile
+    ports:
+      - "8082:8082"
+
+  rest_order_server:
+    image: rest_order_server
+    build:
+      context: .
+      dockerfile: cmd/order_service/Dockerfile
+    ports:
+      - "8083:8083"
