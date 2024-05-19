@@ -18,6 +18,13 @@ type server struct {
 	pb.UnimplementedProductServiceServer
 }
 
+var jwtKey = []byte("your_secret_key")
+
+type Claims struct {
+	Username string `json:"username"`
+	jwt.StandardClaims
+}
+
 // JWT Authentication Middleware
 func Authenticate(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	if info.FullMethod == "/product.ProductService/CreateProduct" ||
